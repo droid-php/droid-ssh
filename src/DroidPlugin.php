@@ -8,11 +8,12 @@ class DroidPlugin
     {
         $this->droid = $droid;
     }
-    
+
     public function getCommands()
     {
         $commands = [];
         $commands[] = new \Droid\Plugin\Ssh\Command\SshExecCommand();
+        $commands[] = new \Droid\Plugin\Ssh\Command\ScpCommand();
         return $commands;
     }
 }
