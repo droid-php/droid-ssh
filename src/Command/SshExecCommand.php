@@ -2,74 +2,78 @@
 
 namespace Droid\Plugin\Ssh\Command;
 
-use Symfony\Component\Console\Command\Command;
+use SSHClient\ClientBuilder\ClientBuilder;
+use SSHClient\ClientConfiguration\ClientConfiguration;
+
 use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use RuntimeException;
-use phpseclib\Net\SSH2;
-use Symfony\Component\Process\ProcessBuilder;
+use Symfony\Component\Process\Process;
 
 class SshExecCommand extends BaseSshCommand
 {
     public function configure()
     {
-        $this->setName('ssh:exec')
-            ->setDescription('Execute a command over ssh')
-        ;
-        $this->baseConfigure();
-        
         $this
+            ->setName('ssh:exec')
+            ->setDescription('Execute a command over ssh')
+            ->baseConfigure()
+            ->addArgument(
+                'hostname',
+                InputArgument::REQUIRED,
+                'Host name, alias or IP address'
+            )
             ->addArgument(
                 'cmd',
                 InputArgument::REQUIRED,
                 'Command to execute on the remote host'
             )
+            ->addArgument(
+                'args',
+                InputArgument::OPTIONAL | InputArgument::IS_ARRAY,
+                'Command arguments'
+            )
         ;
     }
-    
+
     public function execute(InputInterface $input, OutputInterface $output)
     {
-        $command = $input->getArgument('cmd');
-
-        $output->writeLn("Ssh exec: <comment>$command</comment> ");
-
-        $ssh = $this->getSshConnection($input, $output);
-        $out = $ssh->exec($command);
-        
         $formatter = $this->getHelper('formatter');
-        
-        foreach (explode("\n", $out) as $line) {
-            if ($line!='') {
-                $formattedLine = $formatter->formatSection(
-                    '<comment>' . $input->getArgument('hostname') . '</comment>:Out',
-                    $line,
-                    'info'
-                );
-                $output->writeln($formattedLine);
+        $outputter = function($type, $buf) use ($formatter, $input, $output) {
+            $style = 'info';
+            $section = '<comment>' . $input->getArgument('hostname') . '</comment>:';
+            if (Process::ERR === $type) {
+                $style = 'error';
+                $section .= 'ERR';
+            } else {
+                $section .= 'Out';
             }
-        }
-        //echo $out;
-        
-        $err = $ssh->getStdError();
-        if ($err) {
-            foreach (explode("\n", $err) as $line) {
-                if ($line!='') {
-                    $formattedLine = $formatter->formatSection(
-                        '<comment>' . $input->getArgument('hostname') . '</comment>:Err',
-                        $line,
-                        'error'
-                    );
-                    $output->writeln($formattedLine);
-                }
-            }
-        }
+            $this->writeOutput($output, $formatter, $buf, $section, $style);
+        };
+        $outputter->bindTo($this);
 
-        if ($ssh->isTimeout()) {
-            $output->writeLn("Connection time-out");
-        }
+        $builder = new ClientBuilder($this->getClientConfig($input, $output));
+        $execArgs = array_merge(
+            array($input->getArgument('cmd')),
+            $input->getArgument('args')
+        );
 
-        //print_r($ssh);
+        $client = $builder->buildClient();
+        $client->exec($execArgs, $outputter);
+    }
+
+    protected function getClientConfig(InputInterface $input, OutputInterface $output)
+    {
+        $config = new ClientConfiguration(
+            $input->getArgument('hostname'),
+            $input->getOption('username')
+        );
+
+        $config
+            ->setOptions($this->getOptions($input))
+            ->setSSHOptions($this->getProgramOptions($input, $output))
+        ;
+
+        return $config;
     }
 }
