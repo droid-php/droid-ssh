@@ -25,6 +25,7 @@ abstract class BaseSshCommand extends Command
      */
     protected $sshOptionOptions = array(
         'port' => 'Port',
+        'proxy' => 'ProxyCommand',
         'timeout' => 'ConnectTimeout',
     );
 
@@ -61,6 +62,12 @@ abstract class BaseSshCommand extends Command
                 InputOption::VALUE_REQUIRED,
                 'Connect timeout in seconds',
                 1
+            )
+            ->addOption(
+                'proxy',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Command to use to connect to the server via a proxy. See ProxyCommand in the Manual page ssh_config(5).'
             )
         ;
     }
