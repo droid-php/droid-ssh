@@ -2,37 +2,48 @@
 
 namespace Droid\Plugin\Ssh\Command;
 
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+
 use SSHClient\ClientBuilder\ClientBuilder;
 use SSHClient\ClientConfiguration\ClientConfiguration;
 
-use Symfony\Component\Console\Input\InputArgument;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Process\Process;
-
-class SshExecCommand extends BaseSshCommand
+class ScpCommand extends BaseSshCommand
 {
+    /**
+     * Maps option names to those understood by scp.
+     *
+     * @var array
+     */
+    protected $programOptions = array(
+        'recursion' => 'r',
+    );
+
     public function configure()
     {
         $this
-            ->setName('ssh:exec')
-            ->setDescription('Execute a command over ssh')
+            ->setName('ssh:copy')
+            ->setAliases(array('scp'))
+            ->setDescription('Copy files to or from a remote host')
+            ->addArgument(
+                'from',
+                InputArgument::REQUIRED,
+                'Path to file(s) at the source'
+            )
+            ->addArgument(
+                'to',
+                InputArgument::REQUIRED,
+                'Path at the destination'
+            )
+            ->addOption(
+                'recursion',
+                'r',
+                InputOption::VALUE_NONE,
+                'Recursively copy entire directories.'
+            )
             ->baseConfigure()
-            ->addArgument(
-                'hostname',
-                InputArgument::REQUIRED,
-                'Host name, alias or IP address'
-            )
-            ->addArgument(
-                'cmd',
-                InputArgument::REQUIRED,
-                'Command to execute on the remote host'
-            )
-            ->addArgument(
-                'args',
-                InputArgument::OPTIONAL | InputArgument::IS_ARRAY,
-                'Command arguments'
-            )
         ;
     }
 
@@ -41,7 +52,7 @@ class SshExecCommand extends BaseSshCommand
         $formatter = $this->getHelper('formatter');
         $outputter = function($type, $buf) use ($formatter, $input, $output) {
             $style = 'info';
-            $section = '<comment>' . $input->getArgument('hostname') . '</comment>:';
+            $section = '<comment>Secure Copy</comment>:';
             if (Process::ERR === $type) {
                 $style = 'error';
                 $section .= 'ERR';
@@ -53,27 +64,25 @@ class SshExecCommand extends BaseSshCommand
         $outputter->bindTo($this);
 
         $builder = new ClientBuilder($this->getClientConfig($input, $output));
-        $execArgs = array_merge(
-            array($input->getArgument('cmd')),
-            $input->getArgument('args')
-        );
+        $client = $builder->buildSecureCopyClient();
 
-        $client = $builder->buildClient();
-        $client->exec($execArgs, $outputter);
+        $client->copy(
+            $input->getArgument('from'),
+            $input->getArgument('to'),
+            $outputter
+        );
     }
 
     protected function getClientConfig(InputInterface $input, OutputInterface $output)
     {
         $config = new ClientConfiguration(
-            $input->getArgument('hostname'),
+            '',
             $input->getOption('username')
         );
 
-        $config
+        return $config
             ->setOptions($this->getOptions($input))
-            ->setSSHOptions($this->getProgramOptions($input, $output))
+            ->setSCPOptions($this->getProgramOptions($input, $output))
         ;
-
-        return $config;
     }
 }
